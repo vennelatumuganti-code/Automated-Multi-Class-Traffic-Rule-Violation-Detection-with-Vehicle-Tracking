@@ -1,0 +1,29 @@
+.bar {
+  grid-column: 1 / -1;
+  background: var(--navy2);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; height: 52px; flex-shrink: 0;
+}
+.logo {
+  font-size: 16px; font-weight: 800; letter-spacing: 0.3px;
+  display: flex; align-items: center; gap: 10px;
+}
+.ai { color: var(--accent); }
+.dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent);
+}
+.meta { display: flex; align-items: center; gap: 10px; }
+.badge {
+  font-family: var(--mono); font-size: 11px;
+  padding: 3px 10px; border-radius: 20px;
+  border: 1px solid var(--border); color: var(--muted);
+  display: flex; align-items: center; gap: 5px;
+}
+.live  { border-color: var(--accent); color: var(--accent); }
+.done  { border-color: rgba(0,229,195,0.3); color: var(--accent); }
+.pulse {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  animation: pulse-dot 1.2s infinite;
+}

@@ -1,0 +1,7 @@
+﻿backend/venv/
+backend/__pycache__/
+backend/uploads/
+backend/frames/
+backend/yolov8n.pt
+backend/.env
+frontend/node_modules/

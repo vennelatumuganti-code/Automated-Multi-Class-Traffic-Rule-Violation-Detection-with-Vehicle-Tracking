@@ -1,0 +1,25 @@
+# ── Copy this file to your backend/ folder ──────────────────
+# ── Never share this file publicly (add .env to .gitignore) ─
+
+# MongoDB connection string
+# After installing MongoDB locally, this default URL works as-is
+MONGODB_URL=mongodb://localhost:27017
+
+# The name of your database inside MongoDB
+DATABASE_NAME=traffic_violation_db
+
+# Where uploaded videos are saved on your PC
+UPLOAD_FOLDER=uploads
+
+# Where extracted frame images are saved
+FRAMES_FOLDER=frames
+
+# Where your trained YOLOv8 model weights file lives
+MODEL_PATH=models/best.pt
+
+# Minimum confidence score for a detection to count (0.0 - 1.0)
+CONFIDENCE_THRESHOLD=0.5
+
+# How many frames to skip between processing (1 = every frame, 5 = every 5th)
+# Higher = faster but might miss violations
+FRAME_SKIP=3

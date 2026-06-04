@@ -1,0 +1,22 @@
+# ── Web Framework ──────────────────────────────────────────
+fastapi==0.111.0          # Our backend API framework (like Flask but faster)
+uvicorn==0.29.0           # The server that RUNS FastAPI (like Apache for websites)
+python-multipart==0.0.9   # Needed so FastAPI can receive uploaded video files
+
+# ── Database ────────────────────────────────────────────────
+pymongo==4.7.2            # Python driver to talk to MongoDB
+motor==3.4.0              # Async version of pymongo (non-blocking DB calls)
+
+# ── Computer Vision & ML ────────────────────────────────────
+ultralytics==8.2.18       # YOLOv8 — object detection (vehicles, helmets, riders)
+opencv-python==4.9.0.80   # OpenCV — read videos, extract frames, draw boxes
+numpy==1.26.4             # Array math (every image is a big number array)
+Pillow==10.3.0            # Image processing helper used by ESRGAN + OCR
+
+# ── OCR ─────────────────────────────────────────────────────
+pytesseract==0.3.10       # Python wrapper for Tesseract OCR engine
+
+# ── Utilities ────────────────────────────────────────────────
+python-dotenv==1.0.1      # Read .env files (for MongoDB URL, secret keys)
+aiofiles==23.2.1          # Async file reading/writing
+requests==2.31.0          # HTTP calls (used for downloading model weights)
