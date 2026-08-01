@@ -22,10 +22,14 @@ After starting, visit http://localhost:8000/docs
 import os
 import uuid
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi import (
+    FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks,
+    WebSocket, WebSocketDisconnect, Query,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -41,8 +45,14 @@ from database import (
     get_violations,
     get_violation_summary,
     get_vehicles,
+    get_distinct_cameras,
+    get_camera_analytics,
+    get_camera_summary_all,
+    get_vehicle_analytics,
+    search_vehicles,
 )
 from detector import TrafficDetector, process_video
+from stream_manager import stream_manager
 
 load_dotenv()
 
@@ -100,6 +110,12 @@ async def startup_event():
     print("🚀 Starting TrafficVision AI Backend...")
     create_indexes()           # Set up MongoDB indexes
     detector = TrafficDetector()   # Load YOLOv8
+
+    # Give the stream manager a handle on THIS event loop. The background
+    # thread that runs process_video() needs this to safely push live
+    # frames out over WebSocket (see stream_manager.py for why).
+    stream_manager.set_loop(asyncio.get_event_loop())
+
     print("✅ Backend ready at http://localhost:8000")
     print("📖 API docs at http://localhost:8000/docs")
 
@@ -348,3 +364,118 @@ def list_frames(session_id: str):
         })
 
     return {"frames": frames, "count": len(frames)}
+
+
+# ─────────────────────────────────────────────────────────────
+# 13. WebSocket /ws/stream/{session_id} — Live Video + Detections
+# ─────────────────────────────────────────────────────────────
+# Mentor requirements #1 and #2: live streaming to the dashboard, with
+# a live YOLO bounding-box overlay showing vehicles as they're detected.
+#
+# How React connects:
+#   const ws = new WebSocket(`ws://localhost:8000/ws/stream/${sessionId}`)
+#   ws.onmessage = (event) => {
+#     const msg = JSON.parse(event.data)
+#     if (msg.type === "frame_update") { ...update <img> src, stats, violations... }
+#     if (msg.type === "status")       { ...handle "complete"... }
+#   }
+#
+# Every message pushed here originates from detector.py's process_video()
+# loop, via stream_manager.broadcast_threadsafe().
+@app.websocket("/ws/stream/{session_id}")
+async def websocket_stream(websocket: WebSocket, session_id: str):
+    await stream_manager.connect(session_id, websocket)
+    try:
+        while True:
+            # We don't expect the client to send anything, but we need to
+            # `await` on the socket so FastAPI notices when it disconnects.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        stream_manager.disconnect(session_id, websocket)
+
+
+# ─────────────────────────────────────────────────────────────
+# 14. GET /analytics/cameras — List of Known Cameras
+# ─────────────────────────────────────────────────────────────
+@app.get("/analytics/cameras")
+def list_cameras():
+    """Returns every camera_id that has recorded at least one violation."""
+    return {"cameras": get_distinct_cameras()}
+
+
+# ─────────────────────────────────────────────────────────────
+# 15. GET /analytics/by-camera — Camera-Based Analytics View
+# ─────────────────────────────────────────────────────────────
+@app.get("/analytics/by-camera")
+def analytics_by_camera(
+    camera_id: Optional[str] = Query(None, description="Filter to one camera; omit for all cameras"),
+    start:     Optional[str] = Query(None, description="ISO date, e.g. 2026-07-01"),
+    end:       Optional[str] = Query(None, description="ISO date, e.g. 2026-07-19"),
+):
+    """
+    Mentor requirement #5 (camera view):
+    "At a camera, in the given time span, how many violations, what types?"
+
+    If camera_id is omitted, returns a per-camera breakdown table instead
+    (used for the "all cameras" overview before drilling into one).
+
+    Example:
+      GET /analytics/by-camera?camera_id=CAM_01&start=2026-07-01&end=2026-07-19
+    """
+    start_dt = datetime.fromisoformat(start) if start else None
+    end_dt   = datetime.fromisoformat(end)   if end   else None
+
+    if camera_id:
+        return get_camera_analytics(camera_id=camera_id, start=start_dt, end=end_dt)
+    else:
+        return {"cameras": get_camera_summary_all(start=start_dt, end=end_dt)}
+
+
+# ─────────────────────────────────────────────────────────────
+# 16. GET /analytics/by-vehicle — Vehicle-Based Analytics View
+# ─────────────────────────────────────────────────────────────
+@app.get("/analytics/by-vehicle")
+def analytics_by_vehicle(
+    vehicle_plate: Optional[str] = Query(None, description="e.g. TS09EA4421"),
+    track_id:      Optional[str] = Query(None, description="e.g. VH04"),
+    start:         Optional[str] = Query(None, description="ISO date, e.g. 2026-07-01"),
+    end:           Optional[str] = Query(None, description="ISO date, e.g. 2026-07-19"),
+):
+    """
+    Mentor requirement #5 (vehicle view):
+    "For a vehicle, in the given time span, how many violations,
+    and at which cameras was it seen?"
+
+    Provide EITHER vehicle_plate OR track_id (plate is more useful once
+    OCR has read it; track_id works even for unread plates).
+
+    Example:
+      GET /analytics/by-vehicle?vehicle_plate=TS09EA4421&start=2026-07-01
+    """
+    if not vehicle_plate and not track_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide vehicle_plate or track_id to look up.",
+        )
+
+    start_dt = datetime.fromisoformat(start) if start else None
+    end_dt   = datetime.fromisoformat(end)   if end   else None
+
+    return get_vehicle_analytics(
+        vehicle_plate=vehicle_plate,
+        track_id=track_id,
+        start=start_dt,
+        end=end_dt,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# 17. GET /analytics/vehicles/search — Autocomplete for Vehicle Picker
+# ─────────────────────────────────────────────────────────────
+@app.get("/analytics/vehicles/search")
+def vehicles_search(q: str = Query(..., min_length=1)):
+    """
+    Powers the vehicle-search box in the analytics UI —
+    type "TS09" and get matching plates/track_ids back.
+    """
+    return {"results": search_vehicles(q)}

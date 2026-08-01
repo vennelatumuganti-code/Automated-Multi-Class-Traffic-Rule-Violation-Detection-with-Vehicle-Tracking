@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import ViolationModal from './ViolationModal'
 import styles from './ViolationFeed.module.css'
 
 const TYPE_META = {
@@ -13,6 +15,9 @@ function fmtTime(iso) {
 }
 
 export default function ViolationFeed({ violations = [] }) {
+  // Mentor requirement #4: click a violation → open its saved image + details
+  const [selected, setSelected] = useState(null)
+
   return (
     <div className={styles.wrap}>
       <div className={styles.hdr}>
@@ -28,7 +33,14 @@ export default function ViolationFeed({ violations = [] }) {
         {violations.map((v, i) => {
           const meta = TYPE_META[v.violation_type] || { label: v.violation_type, icon: '⚠', cls: 'red' }
           return (
-            <div key={v._id || i} className={styles.item} style={{ animationDelay: `${i * 0.04}s` }}>
+            <div
+              key={v._id || i}
+              className={styles.item}
+              style={{ animationDelay: `${i * 0.04}s`, cursor: 'pointer' }}
+              onClick={() => setSelected(v)}
+              role="button"
+              tabIndex={0}
+            >
               <div className={`${styles.icon} ${styles[meta.cls]}`}>{meta.icon}</div>
               <div className={styles.info}>
                 <div className={styles.type}>{meta.label}</div>
@@ -47,6 +59,10 @@ export default function ViolationFeed({ violations = [] }) {
           )
         })}
       </div>
+
+      {selected && (
+        <ViolationModal violation={selected} onClose={() => setSelected(null)} />
+      )}
     </div>
   )
 }

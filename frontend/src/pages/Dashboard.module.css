@@ -7,6 +7,15 @@
   flex: 1; overflow: hidden;
 }
 
+/* ── Session / Analytics View Switch ── */
+.viewSwitch { display: flex; gap: 8px; margin-bottom: 16px; }
+.viewBtn {
+  padding: 7px 16px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 12px; font-weight: 600;
+}
+.viewBtnActive { background: rgba(0,229,195,0.1); border-color: rgba(0,229,195,0.35); color: var(--accent); }
+
 /* ── Sidebar ── */
 .sidebar {
   background: var(--navy2); border-right: 1px solid var(--border);

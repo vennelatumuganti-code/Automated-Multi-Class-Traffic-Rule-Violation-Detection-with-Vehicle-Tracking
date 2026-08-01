@@ -100,21 +100,19 @@ def extract_frames(
     cap.release()
 
 
-def save_annotated_frame(
-    frame:        np.ndarray,
-    frame_number: int,
-    session_id:   str,
-    output_folder: str,
-    detections:   list = None,
-) -> str:
+def draw_boxes(frame: np.ndarray, detections: list = None) -> np.ndarray:
     """
-    Draw bounding boxes on a frame and save it as a .jpg file.
-    These saved images appear in the Frame Strip on your UI.
+    Draw bounding boxes + labels onto a COPY of a frame and return it.
+
+    This is the single shared drawing routine used by:
+      - save_annotated_frame()   → the JPEG saved to disk for a violation
+      - detector.py's live loop  → the frame streamed over WebSocket
+
+    Keeping this in one place means the live preview and the saved
+    violation image always look identical — same colors, same label style.
 
     detections = list of dicts like:
       [{ "bbox": [x1,y1,x2,y2], "label": "no_helmet", "conf": 0.94, "color": (255,50,50) }]
-
-    Returns the relative path to the saved image (stored in MongoDB).
     """
     annotated = frame.copy()   # Never draw on the original frame
 
@@ -141,6 +139,28 @@ def save_annotated_frame(
                 (255, 255, 255),   # white text
                 1, cv2.LINE_AA
             )
+
+    return annotated
+
+
+def save_annotated_frame(
+    frame:        np.ndarray,
+    frame_number: int,
+    session_id:   str,
+    output_folder: str,
+    detections:   list = None,
+) -> str:
+    """
+    Draw bounding boxes on a frame and save it as a .jpg file.
+    These saved images appear in the Frame Strip and the click-to-inspect
+    violation detail view on your UI.
+
+    detections = list of dicts like:
+      [{ "bbox": [x1,y1,x2,y2], "label": "no_helmet", "conf": 0.94, "color": (255,50,50) }]
+
+    Returns the relative path to the saved image (stored in MongoDB).
+    """
+    annotated = draw_boxes(frame, detections)
 
     # Build the output file path
     filename = f"frame_{session_id}_{frame_number:06d}.jpg"

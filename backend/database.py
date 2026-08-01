@@ -234,7 +234,163 @@ def get_vehicles(session_id: str) -> list:
 
 
 # ─────────────────────────────────────────────
-# 7. Helper — Fix MongoDB ObjectId
+# 7. Analytics Functions (Mentor requirement #5)
+# Two views:
+#   A) Camera-based  — "at THIS camera, in THIS time span,
+#                        how many violations, of what types?"
+#   B) Vehicle-based  — "for THIS vehicle, in THIS time span,
+#                        how many times, at which cameras?"
+# ─────────────────────────────────────────────
+
+def _build_time_filter(start: Optional[datetime], end: Optional[datetime]) -> dict:
+    """
+    Build a MongoDB $gte/$lte filter on the 'timestamp' field.
+    Either bound can be omitted (open-ended range).
+    """
+    time_filter = {}
+    if start:
+        time_filter["$gte"] = start
+    if end:
+        time_filter["$lte"] = end
+    return {"timestamp": time_filter} if time_filter else {}
+
+
+def get_distinct_cameras() -> list:
+    """All camera_ids that have ever recorded a violation — for the dropdown filter."""
+    return sorted(violations_col.distinct("camera_id"))
+
+
+def get_camera_analytics(
+    camera_id: Optional[str] = None,
+    start:     Optional[datetime] = None,
+    end:       Optional[datetime] = None,
+) -> dict:
+    """
+    Camera-based view: for a given camera (or ALL cameras if camera_id is None),
+    within a time span, return:
+      - total violation count
+      - breakdown by violation_type
+      - the list of matching violations (for a detail table)
+
+    This powers: "At Camera CAM_01, between <date A> and <date B>,
+    how many violations, and what types?"
+    """
+    match_query = _build_time_filter(start, end)
+    if camera_id:
+        match_query["camera_id"] = camera_id
+
+    docs = list(
+        violations_col.find(match_query).sort("timestamp", DESCENDING)
+    )
+
+    breakdown: dict = {}
+    for d in docs:
+        vt = d["violation_type"]
+        breakdown[vt] = breakdown.get(vt, 0) + 1
+
+    return {
+        "camera_id":        camera_id or "ALL",
+        "total_violations": len(docs),
+        "breakdown":        breakdown,
+        "violations":       [_serialize(d) for d in docs],
+    }
+
+
+def get_camera_summary_all(
+    start: Optional[datetime] = None,
+    end:   Optional[datetime] = None,
+) -> list:
+    """
+    One row per camera — used for the camera-view overview table,
+    e.g. "CAM_01: 24 violations | CAM_02: 9 violations".
+    """
+    match_query = _build_time_filter(start, end)
+
+    pipeline = []
+    if match_query:
+        pipeline.append({"$match": match_query})
+    pipeline.append({
+        "$group": {
+            "_id":   "$camera_id",
+            "total": {"$sum": 1},
+            "types": {"$push": "$violation_type"},
+        }
+    })
+    pipeline.append({"$sort": {"total": -1}})
+
+    results = violations_col.aggregate(pipeline)
+
+    rows = []
+    for r in results:
+        breakdown: dict = {}
+        for t in r["types"]:
+            breakdown[t] = breakdown.get(t, 0) + 1
+        rows.append({
+            "camera_id":        r["_id"],
+            "total_violations": r["total"],
+            "breakdown":        breakdown,
+        })
+    return rows
+
+
+def get_vehicle_analytics(
+    vehicle_plate: Optional[str] = None,
+    track_id:      Optional[str] = None,
+    start:         Optional[datetime] = None,
+    end:           Optional[datetime] = None,
+) -> dict:
+    """
+    Vehicle-based view: for a given vehicle (matched by plate OR track_id),
+    within a time span, return:
+      - total violation count
+      - breakdown by violation_type
+      - every camera this vehicle was caught on
+      - the list of matching violations (for a detail table)
+
+    This powers: "For plate TS09 EA 4421, between <date A> and <date B>,
+    how many times did it violate, and at which cameras?"
+    """
+    match_query = _build_time_filter(start, end)
+    if vehicle_plate:
+        match_query["vehicle_plate"] = vehicle_plate
+    if track_id:
+        match_query["track_id"] = track_id
+
+    docs = list(
+        violations_col.find(match_query).sort("timestamp", DESCENDING)
+    )
+
+    breakdown: dict = {}
+    cameras_seen = set()
+    for d in docs:
+        vt = d["violation_type"]
+        breakdown[vt] = breakdown.get(vt, 0) + 1
+        cameras_seen.add(d["camera_id"])
+
+    return {
+        "vehicle_plate":     vehicle_plate,
+        "track_id":          track_id,
+        "total_violations":  len(docs),
+        "breakdown":         breakdown,
+        "cameras_seen":      sorted(cameras_seen),
+        "violations":        [_serialize(d) for d in docs],
+    }
+
+
+def search_vehicles(query: str) -> list:
+    """
+    Look up known vehicles by partial plate text or track_id, so the
+    analytics UI can offer autocomplete when picking a vehicle to inspect.
+    """
+    regex = {"$regex": query, "$options": "i"}
+    docs = vehicles_col.find(
+        {"$or": [{"vehicle_plate": regex}, {"track_id": regex}]}
+    ).limit(20)
+    return [_serialize(d) for d in docs]
+
+
+# ─────────────────────────────────────────────
+# 8. Helper — Fix MongoDB ObjectId
 # ─────────────────────────────────────────────
 def _serialize(doc: dict) -> dict:
     """

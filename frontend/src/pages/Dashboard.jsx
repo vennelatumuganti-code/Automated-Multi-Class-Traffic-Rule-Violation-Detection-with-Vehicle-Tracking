@@ -7,6 +7,8 @@ import ViolationFeed  from '../components/ViolationFeed'
 import VehicleTracker from '../components/VehicleTracker'
 import ViolationChart from '../components/ViolationChart'
 import FrameStrip     from '../components/FrameStrip'
+import LiveStream     from '../components/LiveStream'
+import AnalyticsView  from '../components/AnalyticsView'
 import { getSessions, getSession, getViolations, getSummary, getVehicles, getFrames } from '../api/traffic'
 import styles from './Dashboard.module.css'
 
@@ -22,7 +24,31 @@ export default function Dashboard() {
   const [vehicles,    setVehicles]    = useState([])
   const [frames,      setFrames]      = useState([])
   const [tab,         setTab]         = useState('violations')  // violations | vehicles | frames
+  const [view,        setView]        = useState('session')     // session | analytics — mentor req #5
   const pollRef = useRef(null)
+
+  // Called by <LiveStream> whenever new violations arrive over the
+  // WebSocket, so the feed updates instantly instead of waiting for the
+  // next 3-second poll cycle.
+  const handleNewViolations = useCallback((incoming) => {
+    setViolations(prev => {
+      const existingFrames = new Set(prev.map(v => `${v.frame_number}-${v.track_id}-${v.violation_type}`))
+      const fresh = incoming
+        .filter(v => !existingFrames.has(`${v.frame_number}-${v.track_id}-${v.violation_type}`))
+        .map(v => ({
+          _id: `${v.frame_number}-${v.track_id}-${v.violation_type}`,
+          violation_type: v.violation_type,
+          vehicle_plate: v.vehicle_plate,
+          track_id: v.track_id,
+          confidence: v.confidence,
+          frame_number: v.frame_number,
+          camera_id: session?.camera_id,
+          frame_image_path: v.frame_image_path,
+          timestamp: new Date().toISOString(),
+        }))
+      return fresh.length ? [...fresh, ...prev] : prev
+    })
+  }, [session])
 
   // Load session list on mount
   useEffect(() => {
@@ -123,7 +149,24 @@ export default function Dashboard() {
 
         {/* ── Main Content ── */}
         <main className={styles.main}>
-          {!sessionId ? (
+          <div className={styles.viewSwitch}>
+            <button
+              className={`${styles.viewBtn} ${view === 'session' ? styles.viewBtnActive : ''}`}
+              onClick={() => setView('session')}
+            >
+              Session View
+            </button>
+            <button
+              className={`${styles.viewBtn} ${view === 'analytics' ? styles.viewBtnActive : ''}`}
+              onClick={() => setView('analytics')}
+            >
+              Analytics
+            </button>
+          </div>
+
+          {view === 'analytics' ? (
+            <AnalyticsView />
+          ) : !sessionId ? (
             <div className={styles.splash}>
               <div className={styles.splashIcon}>▲</div>
               <h2>Upload a traffic video to begin analysis</h2>
@@ -131,6 +174,12 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
+              {/* Mentor req #1 & #2: live streaming + live YOLO overlay */}
+              <LiveStream
+                sessionId={sessionId}
+                sessionStatus={session?.status}
+                onNewViolations={handleNewViolations}
+              />
               <StatsPanel session={session} />
               <ViolationChart summary={summary} />
               <FrameStrip frames={frames} violations={violations} />
