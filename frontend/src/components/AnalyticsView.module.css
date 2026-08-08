@@ -6,24 +6,24 @@
   font-size: 11px; letter-spacing: 1px; text-transform: uppercase; font-weight: 700;
   color: var(--muted); border-bottom: 2px solid transparent;
 }
-.tabActive { color: var(--accent, #00e5c3); border-bottom-color: var(--accent, #00e5c3); }
+.tabActive { color: var(--accent, #1A1A1A); border-bottom-color: var(--accent, #1A1A1A); }
 
 .filters { display: flex; align-items: flex-end; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .filterLabel { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .dateInput {
-  background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(0,0,0,0.04); border: 1px solid var(--border); border-radius: 6px;
   color: inherit; padding: 6px 8px; font-size: 12px; font-family: var(--mono);
 }
 .applyBtn {
   padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer;
-  background: var(--accent, #00e5c3); color: #05070a; font-weight: 700; font-size: 12px;
+  background: var(--accent, #1A1A1A); color: #FFFFFF; font-weight: 700; font-size: 12px;
 }
 
 .panel { padding: 16px; }
 
 .select {
   width: 100%; padding: 8px 10px; margin-bottom: 12px;
-  background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(0,0,0,0.04); border: 1px solid var(--border); border-radius: 8px;
   color: inherit; font-size: 13px;
 }
 
@@ -32,13 +32,13 @@
 .table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .table th { text-align: left; padding: 8px 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
 .table td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
-.table tbody tr:hover { background: rgba(255,255,255,0.03); cursor: pointer; }
+.table tbody tr:hover { background: rgba(0,0,0,0.03); cursor: pointer; }
 .clickableRow { cursor: pointer; }
 .mono { font-family: var(--mono); }
 .empty { padding: 16px 0; color: var(--muted); text-align: center; }
 
 .pills { display: flex; flex-wrap: wrap; gap: 6px; }
-.pill { font-size: 11px; background: rgba(255,255,255,0.05); border-radius: 20px; padding: 4px 10px; }
+.pill { font-size: 11px; background: rgba(0,0,0,0.05); border-radius: 20px; padding: 4px 10px; }
 .muted { color: var(--muted); }
 
 .summaryRow { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -51,7 +51,7 @@
 .searchWrap { position: relative; margin-bottom: 14px; }
 .searchInput {
   width: 100%; padding: 9px 12px;
-  background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(0,0,0,0.04); border: 1px solid var(--border); border-radius: 8px;
   color: inherit; font-size: 13px; box-sizing: border-box;
 }
 .dropdown {
@@ -60,4 +60,4 @@
   max-height: 220px; overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 .dropdownItem { display: flex; justify-content: space-between; padding: 9px 12px; cursor: pointer; font-size: 12px; }
-.dropdownItem:hover { background: rgba(255,255,255,0.05); }
+.dropdownItem:hover { background: rgba(0,0,0,0.05); }

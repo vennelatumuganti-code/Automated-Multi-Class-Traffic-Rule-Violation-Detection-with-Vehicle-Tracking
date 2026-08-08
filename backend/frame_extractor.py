@@ -116,6 +116,17 @@ def draw_boxes(frame: np.ndarray, detections: list = None) -> np.ndarray:
     """
     annotated = frame.copy()   # Never draw on the original frame
 
+    # Scale line thickness + font to the frame size. The live preview is
+    # downscaled to ~960px wide before it reaches the browser, so a fixed
+    # 2px line drawn on a 4K frame becomes sub-pixel and effectively
+    # invisible. Scaling by width keeps boxes and labels clearly readable
+    # on both the live stream and the full-resolution saved frame.
+    h, w = annotated.shape[:2]
+    thickness   = max(2, round(w / 320))          # ~12px on 4K, 2px on 960px
+    font_scale  = max(0.5, w / 1600)              # readable after downscale
+    text_thick  = max(1, round(w / 900))
+    pad         = max(4, round(w / 300))
+
     if detections:
         for det in detections:
             x1, y1, x2, y2 = [int(v) for v in det["bbox"]]
@@ -124,20 +135,25 @@ def draw_boxes(frame: np.ndarray, detections: list = None) -> np.ndarray:
             color  = det.get("color", (0, 229, 195))   # default = teal
 
             # Draw the bounding box rectangle
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
 
             # Draw a filled rectangle behind the label text for readability
             text   = f"{label} {conf:.0%}"
-            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            cv2.rectangle(annotated, (x1, y1 - th - 8), (x1 + tw + 6, y1), color, -1)
+            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_thick)
+            cv2.rectangle(
+                annotated,
+                (x1, max(0, y1 - th - pad * 2)),
+                (x1 + tw + pad, y1),
+                color, -1
+            )
 
             # Draw the label text
             cv2.putText(
                 annotated, text,
-                (x1 + 3, y1 - 4),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                (x1 + pad // 2, y1 - pad),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale,
                 (255, 255, 255),   # white text
-                1, cv2.LINE_AA
+                text_thick, cv2.LINE_AA
             )
 
     return annotated

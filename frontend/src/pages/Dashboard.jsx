@@ -9,7 +9,7 @@ import ViolationChart from '../components/ViolationChart'
 import FrameStrip     from '../components/FrameStrip'
 import LiveStream     from '../components/LiveStream'
 import AnalyticsView  from '../components/AnalyticsView'
-import { getSessions, getSession, getViolations, getSummary, getVehicles, getFrames } from '../api/traffic'
+import { getSessions, getSession, getViolations, getSummary, getVehicles, getFrames, frameUrl } from '../api/traffic'
 import styles from './Dashboard.module.css'
 
 export default function Dashboard() {
@@ -174,15 +174,26 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
-              {/* Mentor req #1 & #2: live streaming + live YOLO overlay */}
+              {/* Numbers up top */}
+              <StatsPanel session={session} />
+
+              {/* Mentor req #1 & #2: the live annotated video is now the
+                  hero, sitting below the stats where the empty "annotated
+                  frames" placeholder used to be. */}
               <LiveStream
                 sessionId={sessionId}
                 sessionStatus={session?.status}
                 onNewViolations={handleNewViolations}
+                fallbackFrameUrl={frames.length ? frameUrl(frames[frames.length - 1].url) : null}
               />
-              <StatsPanel session={session} />
-              <ViolationChart summary={summary} />
-              <FrameStrip frames={frames} violations={violations} />
+
+              {/* Only render the breakdown chart once there's data — no
+                  empty "will appear after analysis" placeholder. */}
+              {Object.keys(summary).length > 0 && <ViolationChart summary={summary} />}
+
+              {/* Saved violation frames to click through — only when they
+                  exist, so there's no empty strip cluttering the view. */}
+              {frames.length > 0 && <FrameStrip frames={frames} violations={violations} />}
             </>
           )}
         </main>

@@ -1,7 +1,30 @@
-﻿backend/venv/
-backend/__pycache__/
+﻿# ── Python / backend ─────────────────────────────
+__pycache__/
+*.pyc
+venv/
+env/
+.venv/
+*.env
+.env
+
+# ── Node / frontend ──────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ── Runtime data (do NOT commit) ─────────────────
 backend/uploads/
 backend/frames/
-backend/yolov8n.pt
-backend/.env
-frontend/node_modules/
+uploads/
+frames/
+
+# ── Large model weights (use Git LFS or share separately) ──
+*.pt
+*.pth
+*.onnx
+
+# ── OS / editor cruft ────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -18,6 +18,7 @@ Key concepts:
 """
 
 import os
+import time
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -258,6 +259,157 @@ def find_plate_for_vehicle(
 # 3. Full Video Processing Pipeline
 # ─────────────────────────────────────────────────────────────
 
+def _analyse_one_frame(
+    frame, frame_number, fps, session_id, camera_id, video_file,
+    session_frames_folder, detector, info, state,
+) -> dict:
+    """
+    All the per-frame work (detection → violations → DB writes → live
+    broadcast) lives here so the caller can wrap the WHOLE thing in one
+    try/except. If anything in a single frame throws — a bad detection, an
+    OCR crop, a Mongo hiccup, an image write — only that frame is lost and
+    the video keeps streaming to the end instead of dying at ~1 second.
+
+    `state` is a mutable dict carrying running totals across frames:
+      { "vehicles": set(), "violations": int, "plates": int, "processed": int }
+    Returns the live_stats dict that was broadcast (for periodic DB updates).
+    """
+    detections = detector.detect_frame(frame)
+
+    live_boxes = []
+    new_violations_this_frame = []
+
+    # Work out which riders are violations FIRST, so we can highlight them
+    # in red on the live preview (not just the plain "motorcyclist" box).
+    violations = find_helmet_violations(detections)
+    violation_keys = {
+        tuple(int(round(c)) for c in v["bbox"]) for v in violations
+    }
+
+    # Draw EVERY detection on the live preview so the dashboard shows
+    # normal traffic moving, with a clear label + confidence on each box.
+    # A rider with no helmet is redrawn in red as "NO HELMET".
+    for det in detections:
+        track_id = det["track_id"]
+        if track_id:
+            state["vehicles"].add(track_id)
+
+        name    = det["class_name"].replace("_", " ")
+        tid_str = f" VH{track_id:02d}" if track_id else ""
+        key     = tuple(int(round(c)) for c in det["bbox"])
+
+        if det["class_name"] == "motorcyclist" and key in violation_keys:
+            live_boxes.append({
+                "bbox":  det["bbox"],
+                "label": f"NO HELMET{tid_str}",
+                "conf":  det["confidence"],
+                "color": CLASS_COLORS["no_helmet"],   # red
+            })
+        else:
+            live_boxes.append({
+                "bbox":  det["bbox"],
+                "label": f"{name}{tid_str}",
+                "conf":  det["confidence"],
+                "color": det["color"],
+            })
+
+    # Absence-based no-helmet violations (see find_helmet_violations()).
+    for det in violations:
+        track_id = det["track_id"]
+        violation_type = det["violation_type"]
+
+        # OCR can throw on odd crops — never let it abort the frame.
+        try:
+            plate_text, ocr_conf = find_plate_for_vehicle(frame, detections, det["bbox"])
+        except Exception as exc:  # noqa: BLE001
+            print(f"   ⚠️  Frame {frame_number}: plate OCR failed ({exc})")
+            plate_text, ocr_conf = "UNREAD", 0.0
+
+        if plate_text != "UNREAD":
+            state["plates"] += 1
+
+        timestamp_str    = timestamp_from_frame(frame_number, fps)
+        vehicle_track_id = f"VH{track_id:02d}" if track_id else "UNKNOWN"
+
+        frame_image_path = save_annotated_frame(
+            frame=          frame,
+            frame_number=   frame_number,
+            session_id=     session_id,
+            output_folder=  session_frames_folder,
+            detections=     [{
+                "bbox":  det["bbox"],
+                "label": f"{violation_type.replace('_',' ')}{(' VH%02d' % track_id) if track_id else ''}",
+                "conf":  det["confidence"],
+                "color": CLASS_COLORS["no_helmet"],
+            }],
+        )
+
+        # IMPORTANT: store a browser-loadable URL, not the raw filesystem
+        # path. app.py mounts the frames folder at /frames, so the modal can
+        # load http://localhost:8000/frames/<session>/<file>. The raw path
+        # (with Windows backslashes / no leading slash) is why the popup
+        # image was blank.
+        frame_image_url = f"/frames/{session_id}/{os.path.basename(frame_image_path)}"
+
+        save_violation(
+            session_id=       session_id,
+            camera_id=        camera_id,
+            video_file=       video_file,
+            track_id=         vehicle_track_id,
+            vehicle_plate=    plate_text,
+            violation_type=   violation_type,
+            confidence=       det["confidence"],
+            frame_number=     frame_number,
+            bbox=             det["bbox"],
+            frame_image_path= frame_image_url,
+        )
+
+        if track_id:
+            upsert_vehicle(
+                session_id=     session_id,
+                camera_id=      camera_id,
+                track_id=       vehicle_track_id,
+                vehicle_plate=  plate_text,
+                violation_type= violation_type,
+                ocr_confidence= ocr_conf,
+                frame_number=   frame_number,
+            )
+
+        state["violations"] += 1
+
+        new_violations_this_frame.append({
+            "violation_type":   violation_type,
+            "vehicle_plate":    plate_text,
+            "track_id":         vehicle_track_id,
+            "confidence":       det["confidence"],
+            "frame_number":     frame_number,
+            "timestamp_str":    timestamp_str,
+            "camera_id":        camera_id,
+            "video_file":       video_file,
+            "frame_image_path": frame_image_url,
+        })
+
+    live_stats = {
+        "processed_frames":  state["processed"],
+        "total_frames":      info["total_frames"],
+        "total_vehicles":    len(state["vehicles"]),
+        "total_violations":  state["violations"],
+        "plates_recognised": state["plates"],
+    }
+
+    # Draw boxes on the frame and stream it live (boxes drawn server-side).
+    preview_frame = draw_boxes(frame, live_boxes)
+    stream_manager.send_frame_update(
+        session_id=     session_id,
+        frame=          preview_frame,
+        frame_number=   frame_number,
+        stats=          live_stats,
+        new_violations= new_violations_this_frame,
+    )
+
+    return live_stats
+
+
 def process_video(
     video_path:    str,
     session_id:    str,
@@ -289,155 +441,79 @@ def process_video(
     fps          = info["fps"]
     video_file   = os.path.basename(video_path)
 
-    total_violations  = 0
-    total_vehicles    = set()     # unique track IDs seen
-    plates_recognised = 0
-    processed_frames  = 0
+    # Running totals live in a mutable dict so _analyse_one_frame() can
+    # update them and the caller can wrap each frame in one try/except.
+    state = {"vehicles": set(), "violations": 0, "plates": 0, "processed": 0}
 
     # Make a subfolder for this session's frames
     session_frames_folder = os.path.join(frames_folder, session_id)
     os.makedirs(session_frames_folder, exist_ok=True)
 
+    # Real-time playback pacing: sleep (FRAME_SKIP / fps) per processed
+    # frame so the LIVE PREVIEW lasts roughly the real length of the video
+    # instead of flashing past. Capped so a mis-read fps can't stall it.
+    target_frame_dt = (FRAME_SKIP / fps) if fps and fps > 0 else 0.06
+    target_frame_dt = min(target_frame_dt, 0.2)
+
+    print("🟢 process_video v3 — full-frame guard + real-time pacing ACTIVE")
+
+    # ── Wait briefly for the dashboard to connect ────────────
+    # The upload response reaches the browser, which then has to navigate to
+    # the session page and open a WebSocket, BEFORE this loop starts sending
+    # frames. For a short test clip, processing can finish in well under a
+    # second — faster than that round-trip — so every frame gets broadcast
+    # to an empty room and the operator sees nothing but "Playback Ended".
+    # Give the frontend a short window to connect (checking every 200ms, up
+    # to 4 seconds) before racing through the video. If nobody connects in
+    # time, processing proceeds anyway — this never blocks batch/headless runs.
+    connect_wait_elapsed = 0.0
+    while not stream_manager.has_viewers(session_id) and connect_wait_elapsed < 4.0:
+        time.sleep(0.2)
+        connect_wait_elapsed += 0.2
+    if stream_manager.has_viewers(session_id):
+        print(f"   🔌 Dashboard connected after {connect_wait_elapsed:.1f}s — streaming live")
+    else:
+        print("   ⏱️  No dashboard connected within 4s — processing without a live viewer")
+
     # ── Frame Loop ──────────────────────────────────────────
     for frame_number, frame in extract_frames(video_path, session_frames_folder, FRAME_SKIP):
 
-        processed_frames += 1
+        frame_start = time.time()
+        state["processed"] += 1
 
-        # Run detection + tracking
-        detections = detector.detect_frame(frame)
-
-        # Two separate annotation lists:
-        #   live_boxes       → EVERY detection this frame (vehicles, helmets, etc.)
-        #                       used only for the live WebSocket preview
-        #   frame_violations → ONLY violation detections, used for the JPEG
-        #                       saved to disk (and linked to the violation record)
-        live_boxes = []
-        frame_violations = []
-        new_violations_this_frame = []   # sent to the frontend over WebSocket
-
-        for det in detections:
-            track_id = det["track_id"]
-            if track_id:
-                total_vehicles.add(track_id)
-
-            # Every detection gets drawn on the live preview frame, so the
-            # dashboard shows normal traffic moving, not just violations.
-            live_boxes.append({
-                "bbox":  det["bbox"],
-                "label": det["class_name"].replace("_", " "),
-                "conf":  det["confidence"],
-                "color": det["color"],
-            })
-
-        # ── Handle Violations (absence-based: motorcyclist + no helmet) ──
-        # See find_helmet_violations() above — this model has no direct
-        # "no_helmet" class, so we derive it by checking each motorcyclist
-        # for a nearby helmet detection.
-        for det in find_helmet_violations(detections):
-            track_id = det["track_id"]
-            violation_type = det["violation_type"]
-
-            # Try to find and read the plate for this vehicle
-            plate_text, ocr_conf = find_plate_for_vehicle(
-                frame, detections, det["bbox"]
+        # ALL per-frame work is wrapped in one guard. If anything throws
+        # (detection, OCR, an image write, a Mongo hiccup) we log it and
+        # move on to the next frame — the live stream keeps running to the
+        # end of the video instead of stopping dead after a second.
+        live_stats = None
+        try:
+            live_stats = _analyse_one_frame(
+                frame, frame_number, fps, session_id, camera_id, video_file,
+                session_frames_folder, detector, info, state,
             )
-
-            if plate_text != "UNREAD":
-                plates_recognised += 1
-
-            # Convert frame number → timestamp string (e.g. "00:48")
-            timestamp_str = timestamp_from_frame(frame_number, fps)
-
-            vehicle_track_id = f"VH{track_id:02d}" if track_id else "UNKNOWN"
-
-            # Save the annotated violation image FIRST so we have a path
-            # to store on the violation record (this was the bug: the
-            # image was being saved but the path was never linked back).
-            frame_image_path = save_annotated_frame(
-                frame=          frame,
-                frame_number=   frame_number,
-                session_id=     session_id,
-                output_folder=  session_frames_folder,
-                detections=     [{
-                    "bbox":  det["bbox"],
-                    "label": f"{violation_type.replace('_',' ')} | {plate_text}",
-                    "conf":  det["confidence"],
-                    "color": det["color"],
-                }],
-            )
-
-            # Save violation to MongoDB — now WITH the image path
-            save_violation(
-                session_id=       session_id,
-                camera_id=        camera_id,
-                video_file=       video_file,
-                track_id=         vehicle_track_id,
-                vehicle_plate=    plate_text,
-                violation_type=   violation_type,
-                confidence=       det["confidence"],
-                frame_number=     frame_number,
-                bbox=             det["bbox"],
-                frame_image_path= frame_image_path,
-            )
-
-            # Upsert vehicle record (create or update)
-            if track_id:
-                upsert_vehicle(
-                    session_id=     session_id,
-                    camera_id=      camera_id,
-                    track_id=       vehicle_track_id,
-                    vehicle_plate=  plate_text,
-                    violation_type= violation_type,
-                    ocr_confidence= ocr_conf,
-                    frame_number=   frame_number,
-                )
-
-            total_violations += 1
-
-            # Also keep the violation box for the live-stream highlight
-            frame_violations.append({
-                "bbox":  det["bbox"],
-                "label": f"{violation_type.replace('_',' ')} | {plate_text}",
-                "conf":  det["confidence"],
-                "color": det["color"],
-            })
-
-            # Queue this up to push to the dashboard's violation feed live
-            new_violations_this_frame.append({
-                "violation_type": violation_type,
-                "vehicle_plate":  plate_text,
-                "track_id":       vehicle_track_id,
-                "confidence":     det["confidence"],
-                "frame_number":   frame_number,
-                "timestamp_str":  timestamp_str,
-                "frame_image_path": frame_image_path,
-            })
-
-        # ── Live Stream Broadcast ────────────────────────────
-        # Draw every detection (not just violations) so the dashboard shows
-        # a real-time YOLO overlay of moving traffic, per mentor requirement #2.
-        live_stats = {
-            "processed_frames":  processed_frames,
-            "total_frames":      info["total_frames"],
-            "total_vehicles":    len(total_vehicles),
-            "total_violations":  total_violations,
-            "plates_recognised": plates_recognised,
-        }
-        preview_frame = draw_boxes(frame, live_boxes)
-        stream_manager.send_frame_update(
-            session_id=     session_id,
-            frame=          preview_frame,
-            frame_number=   frame_number,
-            stats=          live_stats,
-            new_violations= new_violations_this_frame,
-        )
+        except Exception as exc:  # noqa: BLE001 — deliberately broad for demo resilience
+            print(f"   ⚠️  Frame {frame_number} skipped due to error: {exc}")
 
         # Update MongoDB stats every 50 processed frames
-        if processed_frames % 50 == 0:
+        if state["processed"] % 50 == 0 and live_stats:
             update_session_stats(session_id, live_stats)
             print(f"   📊 Frame {frame_number} | "
-                  f"Violations: {total_violations} | "
-                  f"Vehicles: {len(total_vehicles)}")
+                  f"Violations: {state['violations']} | "
+                  f"Vehicles: {len(state['vehicles'])}")
+
+        # Pace to real-time so the preview lasts the video's length. Only
+        # pace when a viewer is connected; skip the sleep if this frame
+        # already took longer than its budget on detection.
+        if stream_manager.has_viewers(session_id):
+            remaining = target_frame_dt - (time.time() - frame_start)
+            if remaining > 0:
+                time.sleep(remaining)
+
+    # Pull final totals out of the running state.
+    total_violations  = state["violations"]
+    total_vehicles    = state["vehicles"]
+    plates_recognised = state["plates"]
+    processed_frames  = state["processed"]
 
     # ── Final Stats ──────────────────────────────────────────
     final_stats = {

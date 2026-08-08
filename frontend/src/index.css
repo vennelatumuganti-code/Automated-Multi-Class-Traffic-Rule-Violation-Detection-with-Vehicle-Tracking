@@ -2,20 +2,41 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/*
+  TrafficVision AI — Light theme (white surfaces, red accent)
+  ─────────────────────────────────────────────────────────
+  The whole UI is driven by these CSS variables. The component
+  stylesheets already read them (var(--navy2), var(--accent), etc.),
+  so re-pointing them here re-skins the entire dashboard at once.
+
+  Palette:
+    background  soft warm grey so white cards lift off the page
+    surfaces    pure white cards / panels / inputs
+    accent+red  a single professional crimson used for brand,
+                active states and violation highlights
+    green/amber reserved for "done" / "processing" status only
+*/
 :root {
-  --navy:    #0B1D3A;
-  --navy2:   #0F2347;
-  --surface: #162E55;
-  --surface2:#1E3A66;
-  --accent:  #00E5C3;
-  --amber:   #FFD166;
-  --red:     #FF4C4C;
-  --text:    #E8F4FF;
-  --muted:   #7DA4C9;
-  --border:  rgba(0,229,195,0.12);
-  --font:    'Syne', sans-serif;
-  --mono:    'DM Mono', monospace;
-  --radius:  12px;
+  --navy:     #F4F5F8;   /* app background            */
+  --navy2:    #FFFFFF;   /* topbar / sidebars / panels */
+  --surface:  #FFFFFF;   /* cards, inputs             */
+  --surface2: #F7F8FB;   /* subtle raised surface     */
+  --panel:    #FFFFFF;   /* generic panel background  */
+
+  --accent:   #C81E3A;   /* primary red (brand / active) */
+  --red:      #C81E3A;   /* violation red                */
+  --amber:    #B45309;   /* processing status           */
+  --green:    #15803D;   /* done status                 */
+
+  --text:     #17202E;   /* near-black primary text  */
+  --muted:    #64748B;   /* secondary / labels       */
+  --border:   #E4E8EF;   /* light hairline borders   */
+
+  --shadow:   0 1px 2px rgba(16,24,40,0.05), 0 2px 10px rgba(16,24,40,0.05);
+
+  --font:     'Syne', sans-serif;
+  --mono:     'DM Mono', monospace;
+  --radius:   12px;
 }
 
 html, body, #root {
@@ -25,11 +46,13 @@ html, body, #root {
   font-family: var(--font);
   font-size: 14px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,229,195,0.2); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.28); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.45); }
 
 button { font-family: var(--font); cursor: pointer; }
 input  { font-family: var(--font); }
@@ -39,10 +62,10 @@ input  { font-family: var(--font); }
   font-size: 11px; font-family: var(--mono);
   padding: 2px 9px; border-radius: 20px; font-weight: 500;
 }
-.tag-red    { background: rgba(255,76,76,0.15);   color: var(--red);    border: 1px solid rgba(255,76,76,0.25); }
-.tag-amber  { background: rgba(255,209,102,0.15); color: var(--amber);  border: 1px solid rgba(255,209,102,0.25); }
-.tag-green  { background: rgba(0,229,195,0.12);   color: var(--accent); border: 1px solid rgba(0,229,195,0.2); }
-.tag-gray   { background: rgba(125,164,201,0.1);  color: var(--muted);  border: 1px solid rgba(125,164,201,0.15); }
+.tag-red    { background: rgba(200,30,58,0.10);   color: var(--red);   border: 1px solid rgba(200,30,58,0.25); }
+.tag-amber  { background: rgba(180,83,9,0.10);    color: var(--amber); border: 1px solid rgba(180,83,9,0.22); }
+.tag-green  { background: rgba(21,128,61,0.10);   color: var(--green); border: 1px solid rgba(21,128,61,0.22); }
+.tag-gray   { background: rgba(100,116,139,0.10); color: var(--muted); border: 1px solid rgba(100,116,139,0.20); }
 
 @keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
 @keyframes fadeIn    { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:none;} }

@@ -122,15 +122,31 @@ class StreamManager:
     # Frame encoding helper
     # ─────────────────────────────────────────────────────────
     @staticmethod
-    def encode_frame(frame: np.ndarray, quality: int = 60) -> str:
+    def encode_frame(frame: np.ndarray, quality: int = 60, max_width: int = 960) -> str:
         """
         Convert an OpenCV frame (numpy array) into a base64 JPEG string
         that can be sent over WebSocket as JSON and displayed in React
         with: <img src={"data:image/jpeg;base64," + data} />
 
-        Lower quality (60) keeps bandwidth usage low for live streaming —
-        this is a preview stream, not the archival frame saved to disk.
+        IMPORTANT: source footage can be 4K (3840x2160) or larger. Encoding
+        a full-resolution frame to JPEG and then base64 (~33% size inflation)
+        produces a multi-megabyte JSON message PER FRAME — sent every ~40ms
+        during live streaming. That is large enough to choke JSON.parse() in
+        the browser, or silently fail on some proxies/buffers, which looks
+        like "nothing renders" with no obvious server-side error. We resize
+        to max_width before encoding — this is a live preview, not the
+        archival image (the full-resolution frame is still saved to disk
+        separately for violation review).
+
+        Lower quality (60) further keeps bandwidth usage low for live
+        streaming — this is a preview stream, not the archival frame saved
+        to disk.
         """
+        h, w = frame.shape[:2]
+        if w > max_width:
+            scale = max_width / w
+            frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+
         ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
         if not ok:
             return ""
@@ -154,7 +170,7 @@ class StreamManager:
         {
           "type": "frame_update",
           "frame_number": 141,
-          "image": "<base64 jpeg>",
+          "image": "<base64 jpeg, downscaled to max 960px wide>",
           "stats": { "processed_frames": 141, "total_violations": 6, ... },
           "new_violations": [ { "violation_type": "no_helmet", "track_id": "VH04", ... } ]
         }
@@ -162,10 +178,16 @@ class StreamManager:
         if not self.has_viewers(session_id):
             return  # nobody's watching — skip the (relatively costly) JPEG encode
 
+        encoded = self.encode_frame(frame)
+        if not encoded:
+            # Encoding failed for this frame — still send stats/violations
+            # so the dashboard doesn't stall, just skip the image this tick.
+            print(f"⚠️  Frame {frame_number}: JPEG encode failed, skipping image for this tick")
+
         message = {
             "type": "frame_update",
             "frame_number": frame_number,
-            "image": self.encode_frame(frame),
+            "image": encoded,
             "stats": stats,
             "new_violations": new_violations,
         }

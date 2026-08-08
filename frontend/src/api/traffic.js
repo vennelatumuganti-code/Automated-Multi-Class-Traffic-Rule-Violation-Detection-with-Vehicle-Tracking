@@ -16,11 +16,25 @@ export const getViolations  = (id)         => api.get(`/violations/${id}`)
 export const getSummary     = (id)         => api.get(`/violations/${id}/summary`)
 export const getVehicles    = (id)         => api.get(`/vehicles/${id}`)
 export const getFrames      = (id)         => api.get(`/frames/${id}`)
-export const frameUrl       = (path)       => `${BASE}${path}`
+
+// ── Robust frame URL builder ────────────────────────────────
+// The backend may store the annotated-frame path in different shapes:
+//   "/frames/<sess>/frame_x.jpg"        (correct URL)
+//   "frames/<sess>/frame_x.jpg"         (relative, no leading slash)
+//   "frames\\<sess>\\frame_x.jpg"       (Windows backslashes)
+//   "C:\\...\\backend\\frames\\<sess>\\frame_x.jpg"  (absolute)
+// The app serves the frames folder at /frames, so we normalise ANY of the
+// above down to  http://localhost:8000/frames/<sess>/<file>.jpg
+export const frameUrl = (path) => {
+  if (!path) return null
+  let p = String(path).replace(/\\/g, '/')       // backslashes → forward slashes
+  const idx = p.indexOf('frames/')               // keep from the 'frames/' segment on
+  if (idx >= 0) p = '/' + p.slice(idx)
+  else if (!p.startsWith('/')) p = '/' + p
+  return `${BASE}${p}`
+}
 
 // ── Live Streaming (mentor requirements #1 and #2) ──────────
-// Builds the WebSocket URL a component connects to for a given session.
-// Usage: const ws = new WebSocket(streamUrl(sessionId))
 export const streamUrl = (sessionId) => `${WS_BASE}/ws/stream/${sessionId}`
 
 // ── Analytics (mentor requirement #5) ───────────────────────

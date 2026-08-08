@@ -32,7 +32,7 @@
 .typeRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .typeTag {
   font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
-  background: rgba(255,76,76,0.15); color: var(--red, #ff4c4c);
+  background: rgba(200,30,58,0.15); color: var(--red, #C81E3A);
   padding: 4px 10px; border-radius: 20px;
 }
 .confidence { font-size: 11px; color: var(--muted); font-family: var(--mono); }

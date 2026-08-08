@@ -22,7 +22,7 @@
   display: flex; align-items: center; gap: 5px;
 }
 .live  { border-color: var(--accent); color: var(--accent); }
-.done  { border-color: rgba(0,229,195,0.3); color: var(--accent); }
+.done  { border-color: rgba(26,26,26,0.3); color: var(--accent); }
 .pulse {
   width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
   animation: pulse-dot 1.2s infinite;

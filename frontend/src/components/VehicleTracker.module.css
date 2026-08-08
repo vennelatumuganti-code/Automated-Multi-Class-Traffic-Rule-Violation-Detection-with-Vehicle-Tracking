@@ -1,7 +1,7 @@
 .wrap  { display: flex; flex-direction: column; height: 100%; }
 .hdr   { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .title { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
-.count { font-size: 11px; font-family: var(--mono); background: rgba(0,229,195,0.1); color: var(--accent); padding: 2px 8px; border-radius: 20px; }
+.count { font-size: 11px; font-family: var(--mono); background: rgba(26,26,26,0.1); color: var(--accent); padding: 2px 8px; border-radius: 20px; }
 .list  { overflow-y: auto; flex: 1; }
 .empty { padding: 20px 16px; font-size: 12px; color: var(--muted); text-align: center; }
 
@@ -14,7 +14,7 @@
 
 .trackId {
   font-family: var(--mono); font-size: 10px; padding: 2px 8px;
-  border-radius: 20px; background: rgba(0,229,195,0.08);
+  border-radius: 20px; background: rgba(26,26,26,0.08);
   color: var(--accent); flex-shrink: 0; white-space: nowrap;
 }
 .info   { flex: 1; min-width: 0; }
@@ -24,5 +24,5 @@
 .vtypes { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
 
 .status { font-size: 10px; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; font-weight: 600; }
-.viol   { background: rgba(255,76,76,0.12);   color: var(--red);    border: 1px solid rgba(255,76,76,0.2); }
-.ok     { background: rgba(0,229,195,0.08);   color: var(--accent); border: 1px solid rgba(0,229,195,0.15); }
+.viol   { background: rgba(200,30,58,0.12);   color: var(--red);    border: 1px solid rgba(200,30,58,0.2); }
+.ok     { background: rgba(26,26,26,0.08);   color: var(--accent); border: 1px solid rgba(26,26,26,0.15); }
